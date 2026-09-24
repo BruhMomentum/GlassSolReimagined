@@ -8,7 +8,7 @@ namespace GlassSol.Patches
     {
         static void Kill(PlayerHealth health)
         {
-            if (!Difficulty.IsOneShot() || health.IsDead)
+            if (health.IsDead || (!Difficulty.IsOneShot() && !NohitSetting.Active()))
                 return;
 
             if (Difficulty.IsTrueGlassSol())
@@ -17,14 +17,37 @@ namespace GlassSol.Patches
                 return;
             }
 
-            health.Die();
-
-            Player player = Player.i;
-            if (player != null && player.health == health)
-                player.DeadCheck(true);
+            PlayDeath(health);
         }
 
-        static void DeleteSaveAndReturnToMenu()
+        static bool InternalShouldKill()
+        {
+            return InternalKillSetting.Shown() && InternalKillSetting.Kills();
+        }
+
+        static void KeepAlive(PlayerHealth health)
+        {
+            float floor = health.maxHealth.Value * 0.01f;
+            if (floor < 1f)
+                floor = 1f;
+            if (health.currentValue < floor)
+                health.currentValue = floor;
+        }
+
+        static void PlayDeath(PlayerHealth health)
+        {
+            Player player = Player.i;
+            health.currentValue = 0f;
+            health.Die();
+            if (player != null && player.health == health)
+                player.DeadCheck(true);
+
+            GameObject anim = new GameObject("GlassSolDeathAnim");
+            Object.DontDestroyOnLoad(anim);
+            anim.AddComponent<DeathAnim>();
+        }
+
+        internal static void DeleteSaveAndReturnToMenu()
         {
             SaveManager manager = SaveManager.Instance;
             int slot = (int)AccessTools.Field(typeof(SaveManager), "currentSlotIndex").GetValue(manager);
@@ -68,9 +91,9 @@ namespace GlassSol.Patches
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PlayerHealth), nameof(PlayerHealth.ReceiveDamage))]
-        static void ReceiveDamage(PlayerHealth __instance, DamageDealer damageDealer)
+        static void ReceiveDamage(PlayerHealth __instance, DamageDealer damageDealer, bool __result)
         {
-            if (__instance.IsInvincible || damageDealer == null || damageDealer.DamageAmount <= 0f)
+            if (!__result || __instance.IsInvincible || damageDealer == null || damageDealer.DamageAmount <= 0f)
                 return;
 
             Kill(__instance);
@@ -93,13 +116,20 @@ namespace GlassSol.Patches
             if (damage <= 0f || __instance.IsDead)
                 return;
 
-            if (!Difficulty.IsOneShot())
+            if (!InternalShouldKill())
+            {
+                if (Difficulty.IsOneShot())
+                    KeepAlive(__instance);
                 return;
+            }
 
-            if (InternalKillSetting.Kills())
-                Kill(__instance);
-            else
-                __instance.currentValue = __instance.maxHealth.Value * 0.01f;
+            PlayDeath(__instance);
+            if (Difficulty.IsTrueGlassSol())
+            {
+                GameObject wipe = new GameObject("GlassSolInternalDeath");
+                Object.DontDestroyOnLoad(wipe);
+                wipe.AddComponent<InternalDeathWipe>();
+            }
         }
 
         [HarmonyPostfix]
@@ -110,6 +140,45 @@ namespace GlassSol.Patches
                 return;
 
             Kill(__instance);
+        }
+    }
+
+    internal class DeathAnim : MonoBehaviour
+    {
+        bool played;
+        int frames = 8;
+
+        void LateUpdate()
+        {
+            Player player = Player.i;
+            if (player != null && player.animator != null)
+            {
+                player.animator.SetLayerWeight(1, 0f);
+                if (!played)
+                {
+                    player.animator.Play("Die", 0, 0f);
+                    played = true;
+                }
+            }
+
+            frames--;
+            if (frames <= 0)
+                Destroy(gameObject);
+        }
+    }
+
+    internal class InternalDeathWipe : MonoBehaviour
+    {
+        float left = 1.4f;
+
+        void Update()
+        {
+            left -= Time.unscaledDeltaTime;
+            if (left > 0f)
+                return;
+
+            PlayerHealthPatch.DeleteSaveAndReturnToMenu();
+            Destroy(gameObject);
         }
     }
 
