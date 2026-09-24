@@ -1,207 +1,520 @@
-using System.Collections.Generic;
+using System;
+using System.Collections;
+using System.IO;
 using System.Reflection;
+using _3_Script.UI.SaveUI;
 using _3_Script.UI.TitleScreenMenuUI;
+using BepInEx;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 namespace GlassSol.Patches
 {
     internal static class ModeMenuPatch
     {
-        const string Placeholder = "Описание.";
+        internal const string GlassSolName = "Стеклянный Сол";
+        internal const string GlassSolNameEn = "Glass Sol";
+        internal const string TrueGlassSolName = "Истинный Стеклянный Сол";
+        internal const string TrueGlassSolNameEn = "True Glass Sol";
+        const string GlassSolDescription = "Повышенная сложность Nine Sols.\nПрямой урон вас мгновенно убивает. Ваше сохранение при этом остается целым.";
+        const string GlassSolDescriptionEn = "An increased difficulty for Nine Sols.\nDirect damage kills you instantly. Your save remains intact.";
+        const string TrueGlassSolDescription = "Наивысшая сложность Nine Sols.\nЛюбой полученный вами урон фатальный, второго шанса не дается.";
+        const string TrueGlassSolDescriptionEn = "The highest difficulty for Nine Sols.\nAny damage you take is fatal. There is no second chance.";
+        static Image glassArt;
+        static Image trueArt;
+        static int shownMode = 1;
+        static UIControlButton soundButton;
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(StartMenuLogic), "Start")]
         static void AddDifficultyButtons(StartMenuLogic __instance)
         {
-            UIControlGroup panel = __instance.ChooseModePanel;
-            if (panel == null || panel.transform.Find("GlassSolMode") != null)
-                return;
-
-            CreateGameAction[] actions = panel.GetComponentsInChildren<CreateGameAction>(true);
-            CreateGameAction template = null;
-            foreach (CreateGameAction action in actions)
-            {
-                if ((int)actionGameMode(action) == 0)
-                    template = action;
-            }
-
-            if (template == null && actions.Length > 0)
-                template = actions[0];
-            if (template == null)
-                return;
-
-            UIControlButton templateButton = ButtonOf(template);
-            if (templateButton == null)
-                return;
-
-            UIControlButton glass = CloneButton(templateButton, "GlassSolMode", Difficulty.GlassSol, "Стеклянный Сол");
-            UIControlButton trueGlass = CloneButton(templateButton, "TrueGlassSolMode", Difficulty.TrueGlassSol, "Истинный Стеклянный Сол");
-
-            List<UIControlButton> buttons = new List<UIControlButton>();
-            foreach (CreateGameAction action in panel.GetComponentsInChildren<CreateGameAction>(true))
-            {
-                UIControlButton button = ButtonOf(action);
-                if (button != null && !buttons.Contains(button))
-                    buttons.Add(button);
-            }
-
-            WireNavigation(buttons);
-            AppendSelectables(panel, glass, trueGlass);
-        }
-
-        static UIControlButton CloneButton(UIControlButton source, string name, int mode, string title)
-        {
-            GameObject clone = Object.Instantiate(source.gameObject, source.transform.parent);
-            clone.name = name;
-            clone.transform.SetSiblingIndex(source.transform.GetSiblingIndex() + (mode - 1));
-
-            RectTransform sourceRect = source.GetComponent<RectTransform>();
-            RectTransform cloneRect = clone.GetComponent<RectTransform>();
-            if (source.transform.parent.GetComponent<VerticalLayoutGroup>() == null && sourceRect != null && cloneRect != null)
-            {
-                float height = sourceRect.rect.height;
-                if (height < 1f)
-                    height = 80f;
-                cloneRect.anchoredPosition = sourceRect.anchoredPosition + new Vector2(0f, -height * (mode - 1));
-            }
-
-            foreach (CreateGameAction action in clone.GetComponentsInChildren<CreateGameAction>(true))
-                actionGameMode(action, (GameMode)mode);
-
-            DisableLocalization(clone);
-            ApplyTexts(clone, title, Placeholder);
-            return clone.GetComponent<UIControlButton>();
-        }
-
-        static void DisableLocalization(GameObject root)
-        {
-            foreach (MonoBehaviour behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
-            {
-                if (behaviour == null || behaviour.GetType().FullName != "I2.Loc.Localize")
-                    continue;
-
-                FieldInfo term = behaviour.GetType().GetField("mTerm", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (term != null)
-                    term.SetValue(behaviour, string.Empty);
-                behaviour.enabled = false;
-            }
-        }
-
-        static void ApplyTexts(GameObject root, string title, string description)
-        {
-            TMP_Text[] texts = root.GetComponentsInChildren<TMP_Text>(true);
-            if (texts.Length == 0)
-                return;
-
-            TMP_Text titleText = texts[0];
-            TMP_Text descriptionText = texts[0];
-            foreach (TMP_Text text in texts)
-            {
-                int length = text.text == null ? 0 : text.text.Length;
-                int titleLength = titleText.text == null ? 0 : titleText.text.Length;
-                int descriptionLength = descriptionText.text == null ? 0 : descriptionText.text.Length;
-                if (length < titleLength)
-                    titleText = text;
-                if (length >= descriptionLength)
-                    descriptionText = text;
-            }
-
-            titleText.text = title;
-            if (descriptionText != titleText)
-                descriptionText.text = description;
-        }
-
-        static void WireNavigation(List<UIControlButton> buttons)
-        {
-            for (int i = 0; i < buttons.Count; i++)
-            {
-                Selectable selectable = SelectableOf(buttons[i]);
-                if (selectable == null)
-                    continue;
-
-                Navigation navigation = selectable.navigation;
-                navigation.mode = Navigation.Mode.Explicit;
-                navigation.selectOnUp = i > 0 ? SelectableOf(buttons[i - 1]) : null;
-                navigation.selectOnDown = i < buttons.Count - 1 ? SelectableOf(buttons[i + 1]) : null;
-                selectable.navigation = navigation;
-            }
-        }
-
-        static void AppendSelectables(UIControlGroup panel, params UIControlButton[] extra)
-        {
-            FieldInfo field = AccessTools.Field(typeof(UIControlGroup), "_allSelectables");
-            Selectable[] current = field.GetValue(panel) as Selectable[] ?? new Selectable[0];
-            List<Selectable> selectables = new List<Selectable>(current);
-            foreach (UIControlButton button in extra)
-            {
-                Selectable selectable = SelectableOf(button);
-                if (selectable != null && !selectables.Contains(selectable))
-                    selectables.Add(selectable);
-            }
-
-            field.SetValue(panel, selectables.ToArray());
-        }
-
-        static UIControlButton ButtonOf(CreateGameAction action)
-        {
-            UIControlButton button = action.GetComponent<UIControlButton>();
-            return button != null ? button : action.GetComponentInParent<UIControlButton>();
-        }
-
-        static Selectable SelectableOf(UIControlButton button)
-        {
-            if (button == null)
-                return null;
-
-            Selectable selectable = AccessTools.Field(typeof(UIControlButton), "_button").GetValue(button) as Selectable;
-            return selectable != null ? selectable : button.GetComponent<Selectable>();
-        }
-
-        static FieldInfo GameModeField()
-        {
-            return AccessTools.Field(typeof(CreateGameAction), "gameMode");
-        }
-
-        static GameMode actionGameMode(CreateGameAction action)
-        {
-            return (GameMode)GameModeField().GetValue(action);
-        }
-
-        static void actionGameMode(CreateGameAction action, GameMode mode)
-        {
-            GameModeField().SetValue(action, mode);
-        }
-    }
-
-    [HarmonyPatch]
-    internal static class NewGameModeSavePatch
-    {
-        [HarmonyTargetMethod]
-        static MethodBase MoveNext()
-        {
-            return AccessTools.Method(
-                typeof(StartMenuLogic).GetNestedType("<NewGameChangeScene>d__52", BindingFlags.NonPublic),
-                "MoveNext");
+            __instance.StartCoroutine(AddWhenReady(__instance));
         }
 
         [HarmonyPostfix]
-        static void SaveCustomMode(object __instance)
+        [HarmonyPatch(typeof(UIControlButton), "OnSelect")]
+        static void ShowPlaceholder(UIControlButton __instance)
         {
-            FieldInfo stateField = __instance.GetType().GetField("<>1__state", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            if (stateField == null || (int)stateField.GetValue(__instance) == 0)
+            Transform options = OptionsOf(__instance.transform);
+            if (options == null)
                 return;
 
-            FieldInfo menuField = __instance.GetType().GetField("<>4__this", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-            StartMenuLogic menu = menuField == null ? null : menuField.GetValue(__instance) as StartMenuLogic;
-            if (menu == null || menu.gameModeFlag == null)
+            ReleaseOthers(options, __instance);
+            int mode = ModeOf(__instance.transform, options);
+            if (glassArt != null && mode >= 0)
+            {
+                shownMode = mode;
+                ApplyArt();
+            }
+            Transform glassButton = options.Find("GlassSolMode");
+            if (glassButton != null)
+                glassButton.Find("ActionText").GetComponent<TMP_Text>().text = Difficulty.Phrase(GlassSolName, GlassSolNameEn);
+            Transform trueButton = options.Find("TrueGlassSolMode");
+            if (trueButton != null)
+                trueButton.Find("ActionText").GetComponent<TMP_Text>().text = Difficulty.Phrase(TrueGlassSolName, TrueGlassSolNameEn);
+
+            if (!IsCustom(__instance.transform))
                 return;
 
-            int mode = (int)AccessTools.Field(typeof(StartMenuLogic), "_newGameMode").GetValue(menu);
-            if (mode == Difficulty.GlassSol || mode == Difficulty.TrueGlassSol)
+            PlaySelectSound();
+            Transform description = options.Find("Selected Description");
+            DestroyLocalization(description.gameObject);
+            description.GetComponentInChildren<TMP_Text>(true).text = IsTrue(__instance.transform)
+                ? Difficulty.Phrase(TrueGlassSolDescription, TrueGlassSolDescriptionEn)
+                : Difficulty.Phrase(GlassSolDescription, GlassSolDescriptionEn);
+        }
+
+        static int ModeOf(Transform transform, Transform options)
+        {
+            if (IsTrue(transform))
+                return 3;
+            if (IsCustom(transform) && !IsTrue(transform))
+                return 2;
+
+            Transform row = transform;
+            while (row.parent != null && row.parent != options)
+                row = row.parent;
+
+            int index = 0;
+            for (int i = 0; i < options.childCount; i++)
+            {
+                if (!options.GetChild(i).name.Contains("Start Game"))
+                    continue;
+                if (options.GetChild(i) == row)
+                    return index;
+                index++;
+            }
+
+            return -1;
+        }
+
+        internal static void ApplyArt()
+        {
+            if (glassArt == null)
+                return;
+
+            glassArt.gameObject.SetActive(shownMode == 2);
+            trueArt.gameObject.SetActive(shownMode == 3);
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(UIControlButton), "OnDeselect")]
+        static void Release(UIControlButton __instance)
+        {
+            if (!IsCustom(__instance.transform))
+                return;
+
+            __instance.StartCoroutine(ClearWhenLeft(__instance));
+        }
+
+        static IEnumerator ClearWhenLeft(UIControlButton button)
+        {
+            yield return null;
+            button.RefreshState();
+        }
+
+        static IEnumerator AddWhenReady(StartMenuLogic menu)
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                if (TryAdd(menu))
+                {
+                    yield return null;
+                    Rebind(FindOptionsRoot());
+                    yield break;
+                }
+
+                yield return new WaitForSecondsRealtime(0.25f);
+            }
+        }
+
+        static bool TryAdd(StartMenuLogic menu)
+        {
+            Transform root = FindOptionsRoot();
+            if (root == null)
+                return false;
+            if (root.Find("TrueGlassSolMode") != null)
+                return true;
+
+            Transform template = FindChild(root, "Start Game");
+            soundButton = template.GetComponent<UIControlButton>() ?? template.GetComponentInChildren<UIControlButton>(true);
+            CreateArts(root);
+            Transform padding = root.GetChild(template.GetSiblingIndex() + 1);
+            TryAddMode(menu, root, template, padding, Difficulty.GlassSol, "GlassSolMode", Difficulty.Phrase(GlassSolName, GlassSolNameEn));
+            TryAddMode(menu, root, template, padding, Difficulty.TrueGlassSol, "TrueGlassSolMode", Difficulty.Phrase(TrueGlassSolName, TrueGlassSolNameEn));
+
+            Rebind(root);
+            return root.Find("TrueGlassSolMode") != null;
+        }
+
+        static void Rebind(Transform root)
+        {
+            SelectableNavigationProvider navigation = root.GetComponent<SelectableNavigationProvider>();
+            if (navigation == null)
+                navigation = root.GetComponentInParent<SelectableNavigationProvider>();
+            if (navigation != null)
+                navigation.AutoNavigateBindForAll();
+        }
+
+        static void TryAddMode(StartMenuLogic menu, Transform root, Transform template, Transform padding, int mode, string objectName, string title)
+        {
+            try
+            {
+                AddMode(menu, root, template, padding, mode, objectName, title);
+            }
+            catch (Exception exception)
+            {
+                Plugin.Log.LogError(objectName + ": " + exception);
+            }
+        }
+
+        static void AddMode(StartMenuLogic menu, Transform root, Transform template, Transform padding, int mode, string objectName, string title)
+        {
+            if (root.Find(objectName) != null)
+                return;
+
+            int index = InsertIndex(root);
+
+            bool wasActive = template.gameObject.activeSelf;
+            template.gameObject.SetActive(false);
+            Transform button = UnityEngine.Object.Instantiate(template.gameObject, root).transform;
+            template.gameObject.SetActive(wasActive);
+            button.SetParent(root, false);
+            button.name = objectName;
+            button.SetSiblingIndex(index);
+            DetachStandardMode(button.gameObject);
+            PointArt(button, mode == Difficulty.TrueGlassSol ? trueArt : glassArt);
+
+            Transform gap = UnityEngine.Object.Instantiate(padding.gameObject, root).transform;
+            gap.SetParent(root, false);
+            gap.SetSiblingIndex(index + 1);
+
+            button.gameObject.SetActive(true);
+            DestroyLocalization(button.gameObject);
+            TMP_Text label = button.Find("ActionText").GetComponent<TMP_Text>();
+            label.text = title;
+
+            UIControlButton control = button.GetComponent<UIControlButton>();
+            if (control == null)
+                control = button.GetComponentInChildren<UIControlButton>(true);
+
+            RetargetLocal(control, button);
+            control.RefreshState();
+            BindDirectStart(menu, control, mode);
+        }
+
+        static void PointArt(Transform button, Image art)
+        {
+            FieldInfo field = null;
+            foreach (MonoBehaviour behaviour in button.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (behaviour == null || behaviour.GetType().Name != "AnimatorColorControlNode")
+                    continue;
+
+                if (field == null)
+                    field = behaviour.GetType().GetField("imageTarget", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                field.SetValue(behaviour, art);
+            }
+        }
+
+        static void DetachStandardMode(GameObject button)
+        {
+            foreach (MonoBehaviour behaviour in button.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (behaviour != null && behaviour.GetType().Name == "CreateGameAction")
+                    UnityEngine.Object.DestroyImmediate(behaviour);
+            }
+        }
+
+        static void RetargetLocal(UIControlButton control, Transform root)
+        {
+            foreach (FieldInfo field in typeof(UIControlButton).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (field.FieldType == typeof(RectTransform) || !typeof(Component).IsAssignableFrom(field.FieldType))
+                    continue;
+                if (field.Name == "belongGroup" || field.Name == "provider" || field.Name == "instructionPanelProvider")
+                    continue;
+
+                Component current = field.GetValue(control) as Component;
+                if (current != null && (current.transform == root || current.transform.IsChildOf(root)))
+                    continue;
+
+                Component local = control.GetComponent(field.FieldType) ?? control.GetComponentInChildren(field.FieldType, true);
+                if (local != null)
+                    field.SetValue(control, local);
+            }
+        }
+
+        static int InsertIndex(Transform root)
+        {
+            int lastButton = 0;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                string name = root.GetChild(i).name;
+                if (name.Contains("Start Game") || name == "GlassSolMode" || name == "TrueGlassSolMode")
+                    lastButton = i;
+            }
+
+            int index = lastButton + 1;
+            if (index < root.childCount && root.GetChild(index).name.StartsWith("Pedding"))
+                index++;
+
+            return index;
+        }
+
+        static Transform FindOptionsRoot()
+        {
+            foreach (Transform transform in Resources.FindObjectsOfTypeAll<Transform>())
+            {
+                if (transform.name == "UIOptions" && transform.gameObject.scene.IsValid() && FindChild(transform, "Start Game") != null)
+                    return transform;
+            }
+
+            return null;
+        }
+
+        static Transform FindChild(Transform root, string namePart)
+        {
+            for (int i = 0; i < root.childCount; i++)
+            {
+                Transform child = root.GetChild(i);
+                if (child.name.Contains(namePart))
+                    return child;
+            }
+
+            return null;
+        }
+
+        static bool IsCustom(Transform transform)
+        {
+            while (transform != null && transform.name != "UIOptions")
+            {
+                if (transform.name == "GlassSolMode" || transform.name == "TrueGlassSolMode")
+                    return true;
+                transform = transform.parent;
+            }
+
+            return false;
+        }
+
+        static bool IsTrue(Transform transform)
+        {
+            while (transform != null && transform.name != "UIOptions")
+            {
+                if (transform.name == "TrueGlassSolMode")
+                    return true;
+                transform = transform.parent;
+            }
+
+            return false;
+        }
+
+        static void CreateArts(Transform options)
+        {
+            if (glassArt != null)
+                return;
+
+            Transform panel = options;
+            while (panel != null && panel.Find("BG") == null)
+                panel = panel.parent;
+
+            Transform background = panel.Find("BG");
+            Image second = null;
+            int count = 0;
+            for (int i = 0; i < background.childCount; i++)
+            {
+                if (background.GetChild(i).name != "BG Image")
+                    continue;
+                count++;
+                if (count == 2)
+                {
+                    second = background.GetChild(i).GetComponent<Image>();
+                    break;
+                }
+            }
+
+            glassArt = CopyArt(second, "GlassSolArt", "GlassSol.png");
+            trueArt = CopyArt(second, "TrueGlassSolArt", "TrueGlassSol.png");
+            if (background.GetComponent<ModeArtKeep>() == null)
+                background.gameObject.AddComponent<ModeArtKeep>();
+        }
+
+        static Image CopyArt(Image source, string name, string fileName)
+        {
+            bool wasActive = source.gameObject.activeSelf;
+            source.gameObject.SetActive(false);
+            Image copy = UnityEngine.Object.Instantiate(source.gameObject, source.transform.parent).GetComponent<Image>();
+            source.gameObject.SetActive(wasActive);
+            copy.name = name;
+            copy.sprite = LoadArt(fileName);
+            Color color = copy.color;
+            color.a = 1f;
+            copy.color = color;
+            Animator animator = copy.GetComponent<Animator>();
+            if (animator != null)
+                animator.enabled = false;
+            copy.transform.SetSiblingIndex(source.transform.GetSiblingIndex() + 1);
+            copy.gameObject.SetActive(false);
+            return copy;
+        }
+
+        static Sprite LoadArt(string fileName)
+        {
+            string path = Path.Combine(Paths.PluginPath, "GlassSol", fileName);
+            Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            ImageConversion.LoadImage(texture, File.ReadAllBytes(path));
+            return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+        }
+
+        static void PlaySelectSound()
+        {
+            object group = AccessTools.Field(typeof(UIControlButton), "_buttonSoundGroup").GetValue(soundButton);
+            AccessTools.Method(group.GetType(), "PlaySelectSound").Invoke(group, null);
+        }
+
+        static Transform OptionsOf(Transform transform)
+        {
+            while (transform != null && transform.name != "UIOptions")
+                transform = transform.parent;
+            return transform;
+        }
+
+        static void ReleaseOthers(Transform options, UIControlButton current)
+        {
+            ReleaseIfOther(options.Find("GlassSolMode"), current);
+            ReleaseIfOther(options.Find("TrueGlassSolMode"), current);
+        }
+
+        static void ReleaseIfOther(Transform row, UIControlButton current)
+        {
+            if (row == null || current.transform.IsChildOf(row) || current.transform == row)
+                return;
+
+            UIControlButton button = row.GetComponent<UIControlButton>() ?? row.GetComponentInChildren<UIControlButton>(true);
+            button.RefreshState();
+        }
+
+        static void BindDirectStart(StartMenuLogic menu, UIControlButton button, int mode)
+        {
+            FieldInfo actionsField = AccessTools.Field(typeof(UIControlButton), "_onSubmitActions");
+            Type actionType = actionsField.FieldType.GetElementType();
+            actionsField.SetValue(button, Array.CreateInstance(actionType, 0));
+            AccessTools.Field(typeof(UIControlButton), "clickToShowGroup").SetValue(button, null);
+            if (button.onSubmit == null)
+                button.onSubmit = new UnityEvent();
+            button.onSubmit.AddListener(() => menu.CreateNewGame(mode));
+        }
+
+        internal static void DestroyLocalization(GameObject root)
+        {
+            foreach (MonoBehaviour behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (behaviour != null && behaviour.GetType().FullName == "I2.Loc.Localize")
+                    UnityEngine.Object.DestroyImmediate(behaviour);
+            }
+        }
+    }
+
+    internal static class SaveModeLabelPatch
+    {
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(RCGAbstractUILabel<int>), "UpdateText")]
+        static void WriteCustomMode(RCGAbstractUILabel<int> __instance)
+        {
+            if (AccessTools.Field(__instance.GetType(), "propertyName").GetValue(__instance) as string != "gameMode")
+                return;
+
+            object value = AccessTools.Method(__instance.GetType(), "GetValueOfData").Invoke(__instance, null);
+            if (!(value is int mode))
+                return;
+            if (mode != Difficulty.GlassSol && mode != Difficulty.TrueGlassSol)
+                return;
+
+            ModeMenuPatch.DestroyLocalization(__instance.gameObject);
+            TMP_Text text = AccessTools.Field(typeof(RCGAbstractUILabel<int>), "text").GetValue(__instance) as TMP_Text;
+            text.text = mode == Difficulty.TrueGlassSol
+                ? Difficulty.Phrase(ModeMenuPatch.TrueGlassSolName, ModeMenuPatch.TrueGlassSolNameEn)
+                : Difficulty.Phrase(ModeMenuPatch.GlassSolName, ModeMenuPatch.GlassSolNameEn);
+        }
+    }
+
+    internal class ModeArtKeep : MonoBehaviour
+    {
+        void LateUpdate()
+        {
+            ModeMenuPatch.ApplyArt();
+        }
+    }
+
+    internal static class NewGameModeSavePatch
+    {
+        static int pendingMode = -1;
+        static StartMenuLogic menu;
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(StartMenuLogic), nameof(StartMenuLogic.CreateNewGame))]
+        static void RememberMode(StartMenuLogic __instance, int mode)
+        {
+            menu = __instance;
+            pendingMode = mode;
+            Apply(mode);
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(StartMenuLogic), "CreateOrLoadSaveSlotAndPlay")]
+        static void ClearOnContinue()
+        {
+            pendingMode = -1;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(A0_S6_IntroVideo), "Start")]
+        static bool SkipIntro(A0_S6_IntroVideo __instance)
+        {
+            if (pendingMode != Difficulty.TrueGlassSol)
+                return true;
+
+            AccessTools.Method(typeof(A0_S6_IntroVideo), "ChangeToStartScene").Invoke(__instance, null);
+            return false;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(ApplicationCore), nameof(ApplicationCore.ChangeSceneClean))]
+        static void SaveMode(string sceneName)
+        {
+            if (sceneName != "A0_S6_Intro_Video")
+                return;
+
+            Apply(pendingMode);
+        }
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(PlayerGamePlayData), nameof(PlayerGamePlayData.SaveMetaData))]
+        static void StampSave(SaveSlotMetaData __result)
+        {
+            if (__result == null)
+                return;
+            if (pendingMode != Difficulty.GlassSol && pendingMode != Difficulty.TrueGlassSol)
+                return;
+
+            __result.gameMode = pendingMode;
+        }
+
+        static void Apply(int mode)
+        {
+            if (mode != Difficulty.GlassSol && mode != Difficulty.TrueGlassSol)
+                return;
+
+            if (menu != null)
                 menu.gameModeFlag.CurrentValue = mode;
+
+            PlayerGamePlayData data = PlayerGamePlayData.Instance;
+            if (data != null && data.gameMode != null)
+                data.gameMode.CurrentValue = mode;
         }
     }
 }

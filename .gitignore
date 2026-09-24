@@ -1,4 +1,5 @@
 .vscode
-ominsharp.json
+omnisharp.json
 obj
 built.bat
+_*

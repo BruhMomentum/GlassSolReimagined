@@ -93,8 +93,20 @@
     <Reference Include="UnityEngine">
       <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.UIModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>E:\Games for Steam\steamapps\common\Nine Sols\NineSols_Data\Managed\UnityEngine.UI.dll</HintPath>
@@ -102,6 +114,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Difficulty.cs" />
+    <Compile Include="GameplaySetting.cs" />
     <Compile Include="ModeMenuPatch.cs" />
     <Compile Include="PlayerPatch.cs" />
     <Compile Include="Plugin.cs" />
