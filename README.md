@@ -1,3 +1,9 @@
-﻿# Nine Sols Glass Sol
+## Nine sols but you die in one hit
+This mod adds two new difficulties besides the original ones: Glass Sol and True Glass Sol
 
-you die from 1 hit that's it (no your save wont be deleted after you die it's not like glass soul from hollow knight)
+- In the "Glass Sol" gamemode you die in 1 hit, but you can take internal damage (you can change it in gameplay settings) and also your save file is not being deleted if you lose.
+- In the "True Glass Sol" gamemode you also die in from any damage, including internal (you still can change it in gameplay settings) and you save file gets deleted.
+
+## Overall changes:
+Revival jade and Steely jade are disabled in all of Glass Sol difficulties
+Glass Sol is also available in the Memory Of Battle mode if you enable it in the gameplay settings
