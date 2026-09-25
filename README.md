@@ -5,5 +5,5 @@ This mod adds two new difficulties besides the original ones: Glass Sol and True
 - In the "True Glass Sol" gamemode you also die in from any damage, including internal (you still can change it in gameplay settings) and you save file gets deleted.
 
 ## Overall changes:
-Revival jade and Steely jade are disabled in all of Glass Sol difficulties
-Glass Sol is also available in the Memory Of Battle mode if you enable it in the gameplay settings
+- Revival jade and Steely jade are disabled in all of Glass Sol difficulties
+- Glass Sol is also available in the Memory Of Battle mode if you enable it in the gameplay settings
